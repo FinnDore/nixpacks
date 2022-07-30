@@ -23,11 +23,12 @@ const NPM_CACHE_DIR: &'static &str = &"/root/.npm";
 const BUN_CACHE_DIR: &'static &str = &"/root/.bun";
 const CYPRESS_CACHE_DIR: &'static &str = &"/root/.cache/Cypress";
 const NODE_MODULES_CACHE_DIR: &'static &str = &"node_modules/.cache";
-const NX_APP_NAME_ENV_VAR: &'static &str = &"NIX_NX_APP_NAME";
+const NX_APP_NAME_ENV_VAR: &'static &str = &"NX_APP_NAME";
 #[derive(Debug, Serialize, PartialEq, Deserialize)]
 struct NxJson {
     #[serde(default)]
-    defaultProject: Option<String>,
+    #[serde(alias = "defaultProject")]
+    default_project: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
@@ -94,10 +95,9 @@ impl Provider for NodeProvider {
 
         if NodeProvider::is_nx_monorepo(app) {
             println!("aaaa{}", _env.get_variable_names().join(","));
-            if let Some(app_name) = NodeProvider::get_nx_service_name(app, _env) {
+            if let Ok(Some(app_name)) = NodeProvider::get_nx_service_name(app, _env) {
                 build_phase.add_cmd(format!("{} run build {} --prod", pkg_manager, app_name));
             }
-            return Err(anyhow!("Could not drive nx app to build and run. Please add a default project to your nx config or set {}", NX_APP_NAME_ENV_VAR));
         } else if NodeProvider::has_script(app, "build")? {
             build_phase.add_cmd(format!("{} run build", pkg_manager));
         }
@@ -159,24 +159,25 @@ impl NodeProvider {
         app.includes_file("nx.json")
     }
 
-    pub fn get_nx_service_name(app: &App, _env: &Environment) -> Option<String> {
+    pub fn get_nx_service_name(app: &App, _env: &Environment) -> Result<Option<String>> {
         if let Some(app_name) = _env.get_config_variable(NX_APP_NAME_ENV_VAR) {
-            return Some(app_name);
+            return Ok(Some(app_name));
         }
 
         if let Ok(nx_json) = app.read_json::<NxJson>("nx.json") {
-            if let Some(default_project) = nx_json.defaultProject {
-                return Some(default_project);
+            if let Some(default_project) = nx_json.default_project {
+                return Ok(Some(default_project));
             }
         }
 
-        None
+        return Err(anyhow!("Could not drive nx app to build and run. Please add a default project to your nx config or set NIXPACKS_{}", NX_APP_NAME_ENV_VAR));
     }
 
     pub fn get_start_cmd(app: &App, _env: &Environment) -> Result<Option<String>> {
         if NodeProvider::is_nx_monorepo(app) {
-            let app_name = NodeProvider::get_nx_service_name(app, _env).unwrap_or("".to_owned());
-            return Ok(Some(format!("node dist/apps/{}/main.js", app_name)));
+            if let Ok(Some(app_name)) = NodeProvider::get_nx_service_name(app, _env) {
+                return Ok(Some(format!("node dist/apps/{}/main.js", app_name)));
+            }
         }
 
         let package_manager = NodeProvider::get_package_manager(app);
