@@ -275,6 +275,12 @@ fn test_node() {
 }
 
 #[test]
+fn test_node_nx() {
+    let name = simple_build("./examples/node-nx");
+    assert!(run_image(name, None).contains("nx express app works"));
+}
+
+#[test]
 fn test_node_custom_version() {
     let name = simple_build("./examples/node-custom-version");
     let output = run_image(name, None);

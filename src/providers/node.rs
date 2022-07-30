@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error,
+};
 
 use super::Provider;
 use crate::nixpacks::{
@@ -22,6 +25,11 @@ const NPM_CACHE_DIR: &'static &str = &"/root/.npm";
 const BUN_CACHE_DIR: &'static &str = &"/root/.bun";
 const CYPRESS_CACHE_DIR: &'static &str = &"/root/.cache/Cypress";
 const NODE_MODULES_CACHE_DIR: &'static &str = &"node_modules/.cache";
+
+#[derive(Debug, Serialize, Deserialize)]
+struct NxJson {
+    defaultProject: String,
+}
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct PackageJson {
@@ -84,7 +92,10 @@ impl Provider for NodeProvider {
     fn build(&self, app: &App, _env: &Environment) -> Result<Option<BuildPhase>> {
         let mut build_phase = BuildPhase::default();
 
-        if NodeProvider::has_script(app, "build")? {
+        if NodeProvider::is_nx_monorepo(app) {
+            let app_name = NodeProvider::get_nx_service_name(app).unwrap_or("".to_owned());
+            build_phase.add_cmd(format!("nx run build {} --prod", app_name));
+        } else if NodeProvider::has_script(app, "build")? {
             let pkg_manager = NodeProvider::get_package_manager(app);
             build_phase.add_cmd(format!("{} run build", pkg_manager));
         }
@@ -142,7 +153,26 @@ impl NodeProvider {
         Ok(false)
     }
 
+    pub fn is_nx_monorepo(app: &App) -> bool {
+        app.includes_file("nx.json")
+    }
+
+    pub fn get_nx_service_name(app: &App) -> Option<String> {
+        if let Ok(nx_json) = app.read_json::<NxJson>("nx.json") {
+            if let default_project = nx_json.defaultProject {
+                return Some(default_project);
+            }
+        };
+
+        None
+    }
+
     pub fn get_start_cmd(app: &App) -> Result<Option<String>> {
+        if NodeProvider::is_nx_monorepo(app) {
+            let app_name = NodeProvider::get_nx_service_name(app).unwrap_or("".to_owned());
+            return Ok(Some(format!("node dist/apps/{}/main.js", app_name)));
+        }
+
         let package_manager = NodeProvider::get_package_manager(app);
         if NodeProvider::has_script(app, "start")? {
             return Ok(Some(format!("{} run start", package_manager)));
@@ -224,6 +254,7 @@ impl NodeProvider {
     pub fn get_install_command(app: &App) -> String {
         let mut install_cmd = "npm i";
         let package_manager = NodeProvider::get_package_manager(app);
+
         if package_manager == "pnpm" {
             install_cmd = "pnpm i --frozen-lockfile";
         } else if package_manager == "yarn" {
