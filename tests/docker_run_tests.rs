@@ -275,7 +275,24 @@ fn test_node() {
 }
 
 #[test]
-fn test_node_nx() {
+fn test_node_nx_next() {
+    let name = simple_build("./examples/node-nx");
+
+    assert!(run_image(
+        name,
+        Some(Config {
+            environment_variables: EnvironmentVariables::from([(
+                "NIXPACKS_NX_APP_NAME".to_string(),
+                "next-app".to_string()
+            )]),
+            network: Some("node_nx_next".to_string()),
+        })
+    )
+    .contains("nx express app works"));
+}
+
+#[test]
+fn test_node_nx_express() {
     let name = simple_build("./examples/node-nx");
     assert!(run_image(name, None).contains("nx express app works"));
 }
@@ -444,46 +461,6 @@ fn test_rust_custom_version() {
 fn test_rust_ring() {
     let name = simple_build("./examples/rust-ring");
     let output = run_image(name, None);
-    assert!(output.contains("Hello from rust"));
-}
-
-#[test]
-fn test_rust_diesel() {
-    // Create the network
-    let n = create_network();
-
-    // Create the db instances
-    let mysql_container = run_mysql();
-    let postgres_container = run_postgres();
-
-    // Attach the db instances to the network
-    attach_container_to_network(n.name.clone(), mysql_container.name.to_owned());
-    attach_container_to_network(n.name.clone(), postgres_container.name.to_owned());
-
-    // Build the rust example
-    let name = simple_build("./examples/rust-diesel");
-    let mut merged_envvars = mysql_container
-        .config
-        .unwrap()
-        .environment_variables
-        .to_owned();
-
-    merged_envvars.extend(postgres_container.config.unwrap().environment_variables);
-
-    // Run the rust example on the attached network
-    let output = run_image(
-        name,
-        Some(Config {
-            environment_variables: merged_envvars,
-            network: Some(n.name.clone()),
-        }),
-    );
-
-    // Cleanup containers and networks
-    stop_and_remove_container(postgres_container.name);
-    stop_and_remove_container(mysql_container.name);
-    remove_network(n.name);
-
     assert!(output.contains("Hello from rust"));
 }
 

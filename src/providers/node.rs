@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+};
 
 use super::Provider;
 use crate::nixpacks::{
@@ -24,11 +27,27 @@ const BUN_CACHE_DIR: &'static &str = &"/root/.bun";
 const CYPRESS_CACHE_DIR: &'static &str = &"/root/.cache/Cypress";
 const NODE_MODULES_CACHE_DIR: &'static &str = &"node_modules/.cache";
 const NX_APP_NAME_ENV_VAR: &'static &str = &"NX_APP_NAME";
+
 #[derive(Debug, Serialize, PartialEq, Deserialize)]
 struct NxJson {
     #[serde(default)]
     #[serde(alias = "defaultProject")]
     default_project: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Options {
+    outputPath: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Build {
+    options: Options,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ProjectJson {
+    targets: Build,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
@@ -96,6 +115,7 @@ impl Provider for NodeProvider {
         if NodeProvider::is_nx_monorepo(app) {
             println!("aaaa{}", _env.get_variable_names().join(","));
             if let Ok(Some(app_name)) = NodeProvider::get_nx_service_name(app, _env) {
+                println!("bbbbbbb{}", _env.get_variable_names().join(","));
                 build_phase.add_cmd(format!("{} run build {} --prod", pkg_manager, app_name));
             }
         } else if NodeProvider::has_script(app, "build")? {
@@ -169,15 +189,51 @@ impl NodeProvider {
                 return Ok(Some(default_project));
             }
         }
-
+        println!("error getting app name");
         return Err(anyhow!("Could not drive nx app to build and run. Please add a default project to your nx config or set NIXPACKS_{}", NX_APP_NAME_ENV_VAR));
+    }
+
+    pub fn get_output_path_for_nx_app(app: &App, app_name: &str) -> Result<Option<String>> {
+        let project_json =
+            app.read_json::<ProjectJson>(&format!("./apps/{}/project.json", app_name));
+
+        if project_json.is_err() {
+            return Err(anyhow!("Cerould not find projects output dir"));
+        }
+
+        println!("{:?}", project_json);
+        return Ok(Some(project_json.unwrap().targets.options.outputPath));
     }
 
     pub fn get_start_cmd(app: &App, _env: &Environment) -> Result<Option<String>> {
         if NodeProvider::is_nx_monorepo(app) {
-            if let Ok(Some(app_name)) = NodeProvider::get_nx_service_name(app, _env) {
-                return Ok(Some(format!("node dist/apps/{}/main.js", app_name)));
+            let app_name = NodeProvider::get_nx_service_name(app, _env)?.unwrap();
+            let output_path = NodeProvider::get_output_path_for_nx_app(app, &app_name)?.unwrap();
+            let current_dir = env::current_dir()?;
+            let source = current_dir.join(output_path);
+
+            let next_dir = source.clone().join("/.next/");
+            if next_dir.is_dir() {
+                println!("cd {:} && npm run start", next_dir.to_str().unwrap());
+                return Ok(Some(format!(
+                    "cd {} && npm run start",
+                    next_dir.to_str().unwrap()
+                )));
             }
+
+            let main_path = source.clone().join("/main.js");
+            if main_path.is_file() {
+                println!("node {:}", main_path.to_str().unwrap());
+                return Ok(Some(format!("node {}", main_path.to_str().unwrap())));
+            }
+
+            let index_path = source.clone().join("/index.js");
+            if index_path.is_file() {
+                println!("node {:}", index_path.to_str().unwrap());
+                return Ok(Some(format!("node {}", index_path.to_str().unwrap())));
+            }
+
+            return Err(anyhow!("Could not resolve start command for nx app"));
         }
 
         let package_manager = NodeProvider::get_package_manager(app);

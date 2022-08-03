@@ -2,6 +2,8 @@
   "$schema": "./node_modules/nx/schemas/workspace-schema.json",
   "version": 2,
   "projects": {
-    "express-app": "apps/express-app"
+    "express-app": "apps/express-app",
+    "next-app": "apps/next-app",
+    "next-app-e2e": "apps/next-app-e2e"
   }
 }
