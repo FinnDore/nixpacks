@@ -20,10 +20,6 @@
 
 use crate::nixpacks::{
     app::App,
-    builder::{
-        docker::{docker_image_builder::DockerImageBuilder, DockerBuilderOptions},
-        ImageBuilder,
-    },
     environment::Environment,
     logger::Logger,
     nix::pkg::Pkg,
@@ -103,7 +99,6 @@ pub async fn create_docker_image(
     path: &str,
     envs: Vec<&str>,
     plan_options: &GeneratePlanOptions,
-    build_options: &DockerBuilderOptions,
 ) -> Result<()> {
     let app = App::new(path)?;
     let environment = Environment::from_envs(envs)?;
@@ -119,14 +114,13 @@ pub async fn create_docker_image(
     }
 
     let logger = Logger::new();
-    let builder = DockerImageBuilder::new(logger, build_options.clone());
 
     let phase_count = plan.phases.clone().map_or(0, |phases| phases.len());
     if phase_count > 0 {
         println!("{}", plan.get_build_string()?);
 
         let start = plan.start_phase.clone().unwrap_or_default();
-        if start.cmd.is_none() && !build_options.no_error_without_start {
+        if start.cmd.is_none() {
             bail!("No start command could be found")
         }
     } else {
@@ -144,10 +138,6 @@ pub async fn create_docker_image(
 
         std::process::exit(1);
     }
-
-    builder
-        .create_image(app.source.to_str().unwrap(), &plan, &environment)
-        .await?;
 
     Ok(())
 }

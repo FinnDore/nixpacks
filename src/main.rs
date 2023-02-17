@@ -3,7 +3,6 @@ use clap::{arg, Parser, Subcommand, ValueEnum};
 use nixpacks::{
     create_docker_image, generate_build_plan, get_plan_providers,
     nixpacks::{
-        builder::docker::DockerBuilderOptions,
         nix::pkg::Pkg,
         plan::{
             generator::GeneratePlanOptions,
@@ -243,24 +242,7 @@ async fn main() -> Result<()> {
                 cache_key
             };
 
-            let build_options = &DockerBuilderOptions {
-                name,
-                tags: tag,
-                labels: label,
-                out_dir: out,
-                quiet: false,
-                cache_key,
-                no_cache,
-                platform,
-                print_dockerfile: dockerfile,
-                current_dir,
-                inline_cache,
-                cache_from,
-                no_error_without_start,
-                incremental_cache_image,
-                verbose,
-            };
-            create_docker_image(&path, env, &options, build_options).await?;
+            create_docker_image(&path, env, &options).await?;
         }
     }
 
